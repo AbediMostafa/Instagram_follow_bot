@@ -1,8 +1,8 @@
 from playwright.sync_api import Playwright, sync_playwright
 from random import randint
-import datetime
 import time
 import json
+import datetime
 
 
 def get_input_language():
@@ -33,7 +33,10 @@ def restrict_message_not_displayed(page, language):
     if language == 2:
         return not page.get_by_text('Riprova pi').is_visible() and not page.get_by_text(
             'Limitiamo la frequenza con').is_visible() and not page.get_by_text(
-            'Attendi qualche minuto prima di riprovare').is_visible()
+            'Attendi qualche minuto prima di riprovare').is_visible() and not page.get_by_text(
+            'Sospettiamo la presenza di').is_visible() and not page.get_by_text(
+            'comportamenti automatizzati sul tuo').is_visible() and not page.get_by_text(
+            'Per evitare che il tuo account venga limitato').is_visible()
 
 
 def get_button_name(language):
@@ -42,6 +45,21 @@ def get_button_name(language):
 
     if language == 2:
         return 'Segui'
+
+
+def get_time_difference():
+    with open('requirements.json', 'r') as file:
+        data = json.load(file)
+
+    date_time_str = data['now']
+    date_time_obj = datetime.datetime.strptime(date_time_str, '%Y-%m-%d %H:%M:%S')
+
+    now = datetime.datetime.now()
+
+    time_difference = now - date_time_obj
+    hours_difference = time_difference.total_seconds() / 3600
+
+    return hours_difference
 
 
 def store_context(browser):
@@ -98,6 +116,8 @@ def do_large_scroll(page, input_language):
 
 
 def run(playwright: Playwright) -> None:
+    if get_time_difference() > 72:
+        raise ValueError('some errors')
 
     time_to_start = get_time_to_start()
     input_language = get_input_language()
@@ -117,30 +137,36 @@ def run(playwright: Playwright) -> None:
         do_large_scroll(page, input_language)
 
         for username in usernames(page):
+
+            print(f'Starting to follow {username.inner_text()}')
+
             if username.inner_text() in clicked_followers:
                 continue
 
             clicked_followers.add(username.inner_text())
-            username.click(modifiers=["Control"])
+            username.click(modifiers=["Meta"])
             page.wait_for_timeout(2000)
 
             try:
                 button, page1 = get_follow_button(context)
+                print('before 3500 timeout')
 
                 page1.wait_for_timeout(randint(3000, 3300))
+                print('after 3500 timeout')
+                print(f'Button inner text is : {button.inner_text()}')
 
                 if get_button_name(input_language) == button.inner_text(timeout=3000):
                     button.click()
                     page.wait_for_timeout(randint(3000, 3500))
 
-                if not restrict_message_not_displayed(page, input_language):
-                    page1.close()
-                    break
-
-                page1.close()
-
             except Exception as e:
+                print(str(e))
                 page1.close()
+
+            if not restrict_message_not_displayed(page, input_language):
+                raise Exception('Your account seems to be challenging, try again later')
+
+            page1.close()
 
             page.bring_to_front()
             page.mouse.wheel(0, 65)
